@@ -1,0 +1,17 @@
+{
+  "name": "bot-moderacao",
+  "version": "1.0.0",
+  "description": "Bot de moderação e boas-vindas para Discord",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "keywords": ["discord", "bot", "moderacao"],
+  "author": "Você",
+  "license": "MIT",
+  "dependencies": {
+    "discord.js": "^14.14.1",
+    "@napi-rs/canvas": "^0.1.44",
+    "dotenv": "^16.3.1"
+  }
+}
