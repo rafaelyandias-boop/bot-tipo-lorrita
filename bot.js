@@ -1,4 +1,4 @@
-// index.js
+// bot.js
 require('dotenv').config();
 const { Client, GatewayIntentBits, EmbedBuilder, PermissionFlagsBits, AttachmentBuilder } = require('discord.js');
 const { createCanvas, loadImage } = require('@napi-rs/canvas');
@@ -304,5 +304,5 @@ async function sendLog(guild, embed) {
     }
 }
 
-// Login
-client.login(process.env.DISCORD_TOKEN);
+// Login com TOKEN_BOT
+client.login(process.env.TOKEN_BOT);
