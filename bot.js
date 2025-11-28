@@ -1,308 +1,181 @@
-// bot.js
 require('dotenv').config();
-const { Client, GatewayIntentBits, EmbedBuilder, PermissionFlagsBits, AttachmentBuilder } = require('discord.js');
-const { createCanvas, loadImage } = require('@napi-rs/canvas');
 
-const client = new Client({
-    intents: [
-        GatewayIntentBits.Guilds,
-        GatewayIntentBits.GuildMembers,
-        GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.MessageContent,
-        GatewayIntentBits.GuildModeration
-    ]
+const Discord = require('discord.js');
+const client = new Discord.Client({ 
+  intents: ['Guilds', 'GuildMessages', 'MessageContent'] 
 });
 
-// Configurações dos servidores (em produção use database)
-const serverConfigs = new Map();
+// BANCOS DE DADOS
+const tokens = new Map();
+const codigos = new Map();
 
-// Função para criar imagem de boas-vindas
-async function createWelcomeImage(member) {
-    const canvas = createCanvas(800, 300);
-    const ctx = canvas.getContext('2d');
+const TOKEN_BOT = process.env.TOKEN_BOT;
 
-    // Gradiente de fundo
-    const gradient = ctx.createLinearGradient(0, 0, 800, 300);
-    gradient.addColorStop(0, '#667eea');
-    gradient.addColorStop(1, '#764ba2');
-    ctx.fillStyle = gradient;
-    ctx.fillRect(0, 0, 800, 300);
-
-    // Texto de boas-vindas
-    ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 40px Arial';
-    ctx.textAlign = 'center';
-    ctx.fillText('BEM-VINDO(A)!', 400, 80);
-
-    // Nome do usuário
-    ctx.font = 'bold 35px Arial';
-    ctx.fillText(member.user.username, 400, 140);
-
-    // Texto adicional
-    ctx.font = '25px Arial';
-    ctx.fillText(`Você é o membro #${member.guild.memberCount}!`, 400, 190);
-
-    // Avatar do usuário
-    try {
-        const avatar = await loadImage(member.user.displayAvatarURL({ extension: 'png', size: 256 }));
-        ctx.save();
-        ctx.beginPath();
-        ctx.arc(400, 240, 40, 0, Math.PI * 2, true);
-        ctx.closePath();
-        ctx.clip();
-        ctx.drawImage(avatar, 360, 200, 80, 80);
-        ctx.restore();
-    } catch (error) {
-        console.error('Erro ao carregar avatar:', error);
-    }
-
-    return canvas.toBuffer('image/png');
-}
-
-// Evento: Bot pronto
-client.once('ready', () => {
-    console.log(`✅ Bot online como ${client.user.tag}!`);
-    client.user.setActivity('Moderando o servidor', { type: 3 });
+client.on('ready', () => {
+  console.log('✅ Bot online como ' + client.user.tag);
 });
 
-// Evento: Membro entra no servidor
-client.on('guildMemberAdd', async (member) => {
-    const config = serverConfigs.get(member.guild.id) || {};
-    const welcomeChannelId = config.welcomeChannel;
-
-    if (!welcomeChannelId) return;
-
-    const channel = member.guild.channels.cache.get(welcomeChannelId);
-    if (!channel) return;
-
-    try {
-        // Cria a imagem de boas-vindas
-        const image = await createWelcomeImage(member);
-        const attachment = new AttachmentBuilder(image, { name: 'welcome.png' });
-
-        const embed = new EmbedBuilder()
-            .setColor('#667eea')
-            .setTitle('🎉 Novo Membro!')
-            .setDescription(`Bem-vindo(a) ao servidor, ${member}!\n\nDivirta-se e respeite as regras!`)
-            .setImage('attachment://welcome.png')
-            .setTimestamp()
-            .setFooter({ text: member.guild.name, iconURL: member.guild.iconURL() });
-
-        await channel.send({ embeds: [embed], files: [attachment] });
-    } catch (error) {
-        console.error('Erro ao enviar boas-vindas:', error);
+client.on('messageCreate', message => {
+  if (message.author.bot) return;
+  
+  if (message.content.startsWith('/verificar ')) {
+    const token = message.content.split(' ')[1];
+    
+    if (!token) {
+      return message.reply('❌ Use: `/verificar SEU_TOKEN`');
     }
+    
+    let encontrado = false;
+    for (let [userId, data] of tokens) {
+      if (data.token === token && !data.verified) {
+        data.verified = true;
+        data.discordId = message.author.id;
+        tokens.set(userId, data);
+        encontrado = true;
+        
+        message.reply('✅ **VERIFICADO!** Volte pro jogo!');
+        console.log(`✅ Player ${userId} verificado`);
+        break;
+      }
+    }
+    
+    if (!encontrado) {
+      message.reply('❌ Token inválido ou já usado!');
+    }
+  }
+  
+  if (message.content.startsWith('/gerar ')) {
+    const args = message.content.split(' ');
+    const tipo = args[1]?.toLowerCase();
+    
+    if (!tipo) {
+      return message.reply('❌ Use: `/gerar [diamantes/dinheiro/xp]`');
+    }
+    
+    const recompensas = {
+      'diamantes': { valor: 100, nome: 'Diamantes' },
+      'dinheiro': { valor: 5000, nome: 'Dinheiro' },
+      'xp': { valor: 1000, nome: 'XP' },
+      'daily': { valor: 500, nome: 'Daily Reward' }
+    };
+    
+    if (!recompensas[tipo]) {
+      return message.reply('❌ Tipo inválido! Use: `diamantes`, `dinheiro`, `xp` ou `daily`');
+    }
+    
+    const codigo = Math.random().toString(36).substring(2, 10).toUpperCase();
+    const recompensa = recompensas[tipo];
+    
+    codigos.set(codigo, {
+      tipo: tipo,
+      valor: recompensa.valor,
+      nome: recompensa.nome,
+      usado: false,
+      criadoPor: message.author.id,
+      criadoEm: Date.now()
+    });
+    
+    const embed = new Discord.EmbedBuilder()
+      .setTitle('🎁 Código Gerado!')
+      .setColor('#57F287')
+      .addFields(
+        { name: '📋 Código', value: `\`${codigo}\``, inline: true },
+        { name: '🎁 Recompensa', value: `${recompensa.valor} ${recompensa.nome}`, inline: true }
+      )
+      .setFooter({ text: 'Resgate no jogo!' });
+    
+    message.reply({ embeds: [embed] });
+    console.log(`🎁 Código gerado: ${codigo} (${recompensa.nome})`);
+  }
+  
+  if (message.content === '/codes') {
+    let lista = '📋 **CÓDIGOS DISPONÍVEIS:**\n\n';
+    let count = 0;
+    
+    for (let [codigo, data] of codigos) {
+      if (!data.usado) {
+        lista += `🎁 \`${codigo}\` - ${data.valor} ${data.nome}\n`;
+        count++;
+      }
+    }
+    
+    if (count === 0) {
+      lista = '❌ Nenhum código disponível no momento!';
+    }
+    
+    message.reply(lista);
+  }
 });
 
-// Evento: Membro sai do servidor
-client.on('guildMemberRemove', async (member) => {
-    const config = serverConfigs.get(member.guild.id) || {};
-    const leaveChannelId = config.leaveChannel;
+const express = require('express');
+const app = express();
+app.use(express.json());
 
-    if (!leaveChannelId) return;
-
-    const channel = member.guild.channels.cache.get(leaveChannelId);
-    if (!channel) return;
-
-    const embed = new EmbedBuilder()
-        .setColor('#ff4757')
-        .setTitle('👋 Membro Saiu')
-        .setDescription(`**${member.user.tag}** saiu do servidor.\n\nAgora temos ${member.guild.memberCount} membros.`)
-        .setThumbnail(member.user.displayAvatarURL())
-        .setTimestamp()
-        .setFooter({ text: member.guild.name, iconURL: member.guild.iconURL() });
-
-    await channel.send({ embeds: [embed] });
+app.post('/gerarToken', (req, res) => {
+  const { userId } = req.body;
+  
+  if (!userId) {
+    return res.json({ success: false, error: 'userId necessário' });
+  }
+  
+  const token = Math.random().toString(36).substring(2, 10).toUpperCase();
+  
+  tokens.set(userId, {
+    token: token,
+    verified: false,
+    createdAt: Date.now()
+  });
+  
+  console.log(`🔑 Token gerado: ${token}`);
+  res.json({ success: true, token: token });
 });
 
-// Evento: Interação de comandos
-client.on('interactionCreate', async (interaction) => {
-    if (!interaction.isChatInputCommand()) return;
-
-    const { commandName, options, member, guild } = interaction;
-
-    // Comando: /configurar
-    if (commandName === 'configurar') {
-        if (!member.permissions.has(PermissionFlagsBits.Administrator)) {
-            return interaction.reply({ content: '❌ Você precisa ser administrador para usar este comando!', ephemeral: true });
-        }
-
-        const type = options.getString('tipo');
-        const channel = options.getChannel('canal');
-
-        const config = serverConfigs.get(guild.id) || {};
-
-        if (type === 'entrada') {
-            config.welcomeChannel = channel.id;
-            serverConfigs.set(guild.id, config);
-            return interaction.reply({ content: `✅ Canal de boas-vindas configurado para ${channel}!`, ephemeral: true });
-        } else if (type === 'saida') {
-            config.leaveChannel = channel.id;
-            serverConfigs.set(guild.id, config);
-            return interaction.reply({ content: `✅ Canal de despedida configurado para ${channel}!`, ephemeral: true });
-        } else if (type === 'logs') {
-            config.logsChannel = channel.id;
-            serverConfigs.set(guild.id, config);
-            return interaction.reply({ content: `✅ Canal de logs configurado para ${channel}!`, ephemeral: true });
-        }
-    }
-
-    // Comando: /ban
-    if (commandName === 'ban') {
-        if (!member.permissions.has(PermissionFlagsBits.BanMembers)) {
-            return interaction.reply({ content: '❌ Você não tem permissão para banir membros!', ephemeral: true });
-        }
-
-        const target = options.getUser('usuario');
-        const reason = options.getString('motivo') || 'Sem motivo especificado';
-
-        try {
-            await guild.members.ban(target, { reason });
-
-            const embed = new EmbedBuilder()
-                .setColor('#ff4757')
-                .setTitle('🔨 Membro Banido')
-                .setDescription(`**${target.tag}** foi banido do servidor!`)
-                .addFields(
-                    { name: '📋 Motivo', value: reason },
-                    { name: '👮 Moderador', value: member.user.tag }
-                )
-                .setTimestamp();
-
-            await interaction.reply({ embeds: [embed] });
-            await sendLog(guild, embed);
-        } catch (error) {
-            await interaction.reply({ content: '❌ Erro ao banir o usuário!', ephemeral: true });
-        }
-    }
-
-    // Comando: /kick
-    if (commandName === 'kick') {
-        if (!member.permissions.has(PermissionFlagsBits.KickMembers)) {
-            return interaction.reply({ content: '❌ Você não tem permissão para expulsar membros!', ephemeral: true });
-        }
-
-        const target = options.getMember('usuario');
-        const reason = options.getString('motivo') || 'Sem motivo especificado';
-
-        try {
-            await target.kick(reason);
-
-            const embed = new EmbedBuilder()
-                .setColor('#ffa502')
-                .setTitle('👢 Membro Expulso')
-                .setDescription(`**${target.user.tag}** foi expulso do servidor!`)
-                .addFields(
-                    { name: '📋 Motivo', value: reason },
-                    { name: '👮 Moderador', value: member.user.tag }
-                )
-                .setTimestamp();
-
-            await interaction.reply({ embeds: [embed] });
-            await sendLog(guild, embed);
-        } catch (error) {
-            await interaction.reply({ content: '❌ Erro ao expulsar o usuário!', ephemeral: true });
-        }
-    }
-
-    // Comando: /timeout
-    if (commandName === 'timeout') {
-        if (!member.permissions.has(PermissionFlagsBits.ModerateMembers)) {
-            return interaction.reply({ content: '❌ Você não tem permissão para silenciar membros!', ephemeral: true });
-        }
-
-        const target = options.getMember('usuario');
-        const duration = options.getInteger('duracao');
-        const reason = options.getString('motivo') || 'Sem motivo especificado';
-
-        try {
-            await target.timeout(duration * 60 * 1000, reason);
-
-            const embed = new EmbedBuilder()
-                .setColor('#ff6348')
-                .setTitle('🔇 Membro Silenciado')
-                .setDescription(`**${target.user.tag}** foi silenciado!`)
-                .addFields(
-                    { name: '⏱️ Duração', value: `${duration} minutos` },
-                    { name: '📋 Motivo', value: reason },
-                    { name: '👮 Moderador', value: member.user.tag }
-                )
-                .setTimestamp();
-
-            await interaction.reply({ embeds: [embed] });
-            await sendLog(guild, embed);
-        } catch (error) {
-            await interaction.reply({ content: '❌ Erro ao silenciar o usuário!', ephemeral: true });
-        }
-    }
-
-    // Comando: /clear
-    if (commandName === 'clear') {
-        if (!member.permissions.has(PermissionFlagsBits.ManageMessages)) {
-            return interaction.reply({ content: '❌ Você não tem permissão para deletar mensagens!', ephemeral: true });
-        }
-
-        const amount = options.getInteger('quantidade');
-
-        try {
-            const deleted = await interaction.channel.bulkDelete(amount, true);
-
-            const embed = new EmbedBuilder()
-                .setColor('#5f27cd')
-                .setTitle('🗑️ Mensagens Deletadas')
-                .setDescription(`**${deleted.size}** mensagens foram deletadas!`)
-                .addFields({ name: '👮 Moderador', value: member.user.tag })
-                .setTimestamp();
-
-            await interaction.reply({ embeds: [embed], ephemeral: true });
-            await sendLog(guild, embed);
-        } catch (error) {
-            await interaction.reply({ content: '❌ Erro ao deletar mensagens!', ephemeral: true });
-        }
-    }
-
-    // Comando: /avisar
-    if (commandName === 'avisar') {
-        if (!member.permissions.has(PermissionFlagsBits.ModerateMembers)) {
-            return interaction.reply({ content: '❌ Você não tem permissão para avisar membros!', ephemeral: true });
-        }
-
-        const target = options.getMember('usuario');
-        const reason = options.getString('motivo');
-
-        const embed = new EmbedBuilder()
-            .setColor('#feca57')
-            .setTitle('⚠️ Aviso')
-            .setDescription(`**${target.user.tag}** recebeu um aviso!`)
-            .addFields(
-                { name: '📋 Motivo', value: reason },
-                { name: '👮 Moderador', value: member.user.tag }
-            )
-            .setTimestamp();
-
-        await interaction.reply({ embeds: [embed] });
-        await sendLog(guild, embed);
-
-        try {
-            await target.send({ content: `⚠️ Você recebeu um aviso em **${guild.name}**\n**Motivo:** ${reason}` });
-        } catch (error) {
-            console.log('Não foi possível enviar DM ao usuário');
-        }
-    }
+app.post('/verificarStatus', (req, res) => {
+  const { userId } = req.body;
+  
+  if (!userId) {
+    return res.json({ success: false, verified: false });
+  }
+  
+  const data = tokens.get(userId);
+  res.json({ success: true, verified: data?.verified || false });
 });
 
-// Função para enviar logs
-async function sendLog(guild, embed) {
-    const config = serverConfigs.get(guild.id) || {};
-    const logsChannelId = config.logsChannel;
+app.post('/resgatarCodigo', (req, res) => {
+  const { codigo, userId } = req.body;
+  
+  if (!codigo || !userId) {
+    return res.json({ success: false, error: 'Parâmetros inválidos' });
+  }
+  
+  const codigoData = codigos.get(codigo.toUpperCase());
+  
+  if (!codigoData) {
+    return res.json({ success: false, error: 'Código inválido!' });
+  }
+  
+  if (codigoData.usado) {
+    return res.json({ success: false, error: 'Código já usado!' });
+  }
+  
+  codigoData.usado = true;
+  codigoData.usadoPor = userId;
+  codigoData.usadoEm = Date.now();
+  codigos.set(codigo.toUpperCase(), codigoData);
+  
+  console.log(`✅ Código ${codigo} resgatado por ${userId}`);
+  
+  res.json({ 
+    success: true, 
+    tipo: codigoData.tipo,
+    valor: codigoData.valor,
+    nome: codigoData.nome
+  });
+});
 
-    if (!logsChannelId) return;
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`🌐 Servidor rodando na porta ${PORT}`);
+});
 
-    const channel = guild.channels.cache.get(logsChannelId);
-    if (channel) {
-        await channel.send({ embeds: [embed] });
-    }
-}
-
-// Login com TOKEN_BOT
-client.login(process.env.TOKEN_BOT);
+client.login(TOKEN_BOT);
